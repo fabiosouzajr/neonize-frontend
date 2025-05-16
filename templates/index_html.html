@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeonizeUI - WhatsApp Automation</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar for navigation -->
+        <div class="sidebar">
+            <div class="logo">
+                <h1>NeonizeUI</h1>
+            </div>
+            <div class="nav-links">
+                <div class="nav-item active" data-tab="chat">
+                    <i class="fas fa-comment-alt"></i>
+                    <span>Chat</span>
+                </div>
+                <div class="nav-item" data-tab="contacts">
+                    <i class="fas fa-address-book"></i>
+                    <span>Contacts</span>
+                </div>
+                <div class="nav-item" data-tab="groups">
+                    <i class="fas fa-users"></i>
+                    <span>Groups</span>
+                </div>
+                <div class="nav-item" data-tab="automation">
+                    <i class="fas fa-robot"></i>
+                    <span>Automation</span>
+                </div>
+                <div class="nav-item" data-tab="settings">
+                    <i class="fas fa-cog"></i>
+                    <span>Settings</span>
+                </div>
+            </div>
+            <div class="connection-status">
+                <div class="status-indicator offline"></div>
+                <span class="status-text">Disconnected</span>
+            </div>
+        </div>
+
+        <!-- Main content area -->
+        <div class="main-content">
+            <!-- Connection panel - shown when disconnected -->
+            <div id="connection-panel" class="panel">
+                <div class="connection-container">
+                    <h2>Connect to WhatsApp</h2>
+                    <p>Scan the QR code below with WhatsApp on your phone to connect.</p>
+                    
+                    <div class="qr-container">
+                        <div id="qr-code"></div>
+                        <button id="refresh-qr" class="btn"><i class="fas fa-sync-alt"></i> Refresh QR Code</button>
+                    </div>
+                    
+                    <button id="connect-btn" class="btn primary">Connect to WhatsApp</button>
+                </div>
+            </div>
+
+            <!-- Chat panel -->
+            <div id="chat-panel" class="panel hidden">
+                <div class="panel-header">
+                    <h2>Messages</h2>
+                    <div class="header-actions">
+                        <button id="clear-messages" class="btn small"><i class="fas fa-trash"></i> Clear</button>
+                    </div>
+                </div>
+                
+                <div class="message-stream">
+                    <!-- Messages will be populated here -->
+                </div>
+                
+                <div class="message-input-container">
+                    <div class="recipient-selector">
+                        <select id="recipient-select">
+                            <option value="">Select recipient...</option>
+                        </select>
+                    </div>
+                    <div class="message-input">
+                        <input type="text" id="message-text" placeholder="Type a message...">
+                        <button id="send-message" class="btn primary"><i class="fas fa-paper-plane"></i></button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Contacts panel -->
+            <div id="contacts-panel" class="panel hidden">
+                <div class="panel-header">
+                    <h2>Contacts</h2>
+                    <div class="header-actions">
+                        <input type="text" id="contact-search" placeholder="Search contacts...">
+                        <button id="refresh-contacts" class="btn small"><i class="fas fa-sync-alt"></i></button>
+                    </div>
+                </div>
+                
+                <div class="contacts-list">
+                    <!-- Contacts will be populated here -->
+                </div>
+            </div>
+
+            <!-- Groups panel -->
+            <div id="groups-panel" class="panel hidden">
+                <div class="panel-header">
+                    <h2>Groups</h2>
+                    <div class="header-actions">
+                        <input type="text" id="group-search" placeholder="Search groups...">
+                        <button id="refresh-groups" class="btn small"><i class="fas fa-sync-alt"></i></button>
+                    </div>
+                </div>
+                
+                <div class="groups-list">
+                    <!-- Groups will be populated here -->
+                </div>
+            </div>
+
+            <!-- Automation panel -->
+            <div id="automation-panel" class="panel hidden">
+                <div class="panel-header">
+                    <h2>Automation Rules</h2>
+                    <div class="header-actions">
+                        <button id="add-rule" class="btn primary small"><i class="fas fa-plus"></i> New Rule</button>
+                    </div>
+                </div>
+                
+                <div class="rules-list">
+                    <!-- Automation rules will be populated here -->
+                </div>
+                
+                <!-- Rule editor modal -->
+                <div id="rule-editor-modal" class="modal">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3>Edit Automation Rule</h3>
+                            <span class="close">&times;</span>
+                        </div>
+                        <div class="modal-body">
+                            <form id="rule-form">
+                                <input type="hidden" id="rule-id">
+                                
+                                <div class="form-group">
+                                    <label for="rule-name">Rule Name</label>
+                                    <input type="text" id="rule-name" required>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="trigger-type">Trigger Type</label>
+                                    <select id="trigger-type" required>
+                                        <option value="message_text">Message Text</option>
+                                        <option value="sender">Sender</option>
+                                        <option value="group">Group</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="trigger-pattern">Trigger Pattern</label>
+                                    <input type="text" id="trigger-pattern" required>
+                                    <small class="help-text">For message text, use regex pattern. For sender/group, use ID or name.</small>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label>Actions</label>
+                                    <div id="actions-container">
+                                        <!-- Action inputs will be added here -->
+                                    </div>
+                                    <button type="button" id="add-action" class="btn small"><i class="fas fa-plus"></i> Add Action</button>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="rule-active" checked>
+                                        Rule Active
+                                    </label>
+                                </div>
+                                
+                                <div class="form-actions">
+                                    <button type="button" id="cancel-rule" class="btn">Cancel</button>
+                                    <button type="submit" class="btn primary">Save Rule</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings panel -->
+            <div id="settings-panel" class="panel hidden">
+                <div class="panel-header">
+                    <h2>Settings</h2>
+                </div>
+                
+                <div class="settings-form">
+                    <div class="form-group">
+                        <label for="session-path">WhatsApp Session Path</label>
+                        <input type="text" id="session-path" value="whatsapp_session">
+                        <small class="help-text">Directory where WhatsApp session data will be stored</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="auto-connect">Auto Connect</label>
+                        <label class="switch">
+                            <input type="checkbox" id="auto-connect">
+                            <span class="slider round"></span>
+                        </label>
+                        <small class="help-text">Automatically connect to WhatsApp on startup</small>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button id="save-settings" class="btn primary">Save Settings</button>
+                    </div>
+                    
+                    <div class="connection-actions">
+                        <button id="disconnect-btn" class="btn danger"><i class="fas fa-power-off"></i> Disconnect</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.4.1/socket.io.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    
+    <!-- Application scripts -->
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/connection.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/messages.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/contacts.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/groups.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/automation.js') }}"></script>
+</body>
+</html>
