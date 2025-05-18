@@ -1,26 +1,36 @@
-
 # app/__init__.py
 from flask import Flask
 from flask_socketio import SocketIO
+from .config import Config
+import os
 
-socketio = SocketIO()
+# Initialize SocketIO without eventlet first
+socketio = SocketIO(
+    cors_allowed_origins="*",
+    ping_timeout=60,
+    ping_interval=25,
+    max_http_buffer_size=1e8,
+    logger=True,
+    engineio_logger=True
+)
 
-def create_app(config_name='default'):
-    app = Flask(__name__)
+def create_app(config_class=Config):
+    app = Flask(__name__,
+                static_folder='static',
+                template_folder='templates')
+    app.config.from_object(config_class)
     
-    # Load config based on config_name
-    from .config import config
-    app.config.from_object(config[config_name])
-    
-    # Initialize extensions
-    socketio.init_app(app, cors_allowed_origins="*")
+    # Initialize SocketIO with the app
+    socketio.init_app(app)
     
     # Register blueprints
-    from .api.routes import api_bp
-    app.register_blueprint(api_bp, url_prefix='/api')
+    from .api.routes import api, main
+    app.register_blueprint(api, url_prefix='/api')
+    app.register_blueprint(main)  # Main blueprint doesn't need a prefix
     
-    # Register the main route
-    from .api.routes import main
-    app.register_blueprint(main)
+    # Ensure static folder exists
+    static_folder = os.path.join(app.root_path, 'static')
+    if not os.path.exists(static_folder):
+        os.makedirs(static_folder)
     
     return app

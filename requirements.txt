@@ -1,0 +1,11 @@
+flask==2.0.1
+werkzeug==2.0.3
+flask-socketio==5.1.1
+neonize
+aiohttp
+asyncio
+python-socketio
+eventlet
+qrcode
+Pillow
+nest_asyncio==1.5.8

@@ -2,103 +2,79 @@
 from flask import Blueprint, jsonify, request, render_template, current_app
 import os
 import json
-from ..neonize_wrapper.client import NeonizeClient
+from ..neonize_wrapper.client import WhatsAppClient
 from ..models.automation import AutomationManager, AutomationRule
 import uuid
+from app import socketio
+from app.config import Config
 
 # Create blueprint for API routes
-api_bp = Blueprint('api', __name__)
+api = Blueprint('api', __name__)
 
 # Create blueprint for main routes
 main = Blueprint('main', __name__)
+
+whatsapp_client = WhatsAppClient(Config.NEONIZE_SESSION_DIR)
 
 @main.route('/')
 def index():
     """Main application page"""
     return render_template('index.html')
 
-@api_bp.route('/status', methods=['GET'])
-def connection_status():
-    """Get WhatsApp connection status"""
-    client = NeonizeClient()
+@api.route('/status', methods=['GET'])
+def get_status():
+    """Get connection status"""
     return jsonify({
-        'status': client.connection_status,
-        'qr_code': client.qr_code_data if client.connection_status == 'initializing' else None
+        'status': 'connected' if whatsapp_client.connected else 'disconnected'
     })
 
-@api_bp.route('/connect', methods=['POST'])
+@api.route('/connect', methods=['POST'])
 def connect():
-    """Initialize and connect to WhatsApp"""
-    client = NeonizeClient()
-    
-    # Get session path from config or request
-    session_path = request.json.get('session_path', current_app.config['NEONIZE_SESSION_PATH'])
-    
-    # Initialize client if not already initialized
-    if client.connection_status == "disconnected":
-        client.initialize(session_path)
-        return jsonify({'status': 'initializing', 'message': 'Connecting to WhatsApp...'})
-    else:
-        return jsonify({'status': client.connection_status, 'message': f'Already in {client.connection_status} state'})
+    """Connect to WhatsApp"""
+    try:
+        whatsapp_client.connect()
+        return jsonify({'status': 'connecting'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
-@api_bp.route('/disconnect', methods=['POST'])
+@api.route('/disconnect', methods=['POST'])
 def disconnect():
     """Disconnect from WhatsApp"""
-    client = NeonizeClient()
-    success, message = client.disconnect()
-    return jsonify({'success': success, 'message': message})
+    success, message = whatsapp_client.disconnect()
+    if success:
+        return jsonify({'status': 'disconnected'})
+    return jsonify({'error': message}), 500
 
-@api_bp.route('/contacts', methods=['GET'])
+@api.route('/contacts', methods=['GET'])
 def get_contacts():
     """Get all contacts"""
-    client = NeonizeClient()
-    if client.connection_status != "connected":
-        return jsonify({'success': False, 'message': 'Not connected to WhatsApp'}), 400
-        
-    return jsonify({
-        'success': True,
-        'contacts': [
-            {'id': c.id, 'name': c.name, 'number': c.number} 
-            for c in client.contacts
-        ]
-    })
+    return jsonify({'contacts': whatsapp_client.get_contacts()})
 
-@api_bp.route('/groups', methods=['GET'])
+@api.route('/groups', methods=['GET'])
 def get_groups():
     """Get all groups"""
-    client = NeonizeClient()
-    if client.connection_status != "connected":
-        return jsonify({'success': False, 'message': 'Not connected to WhatsApp'}), 400
-        
-    return jsonify({
-        'success': True,
-        'groups': [
-            {'id': g.id, 'name': g.name, 'participants': len(g.participants)} 
-            for g in client.groups
-        ]
-    })
+    return jsonify({'groups': whatsapp_client.get_groups()})
 
-@api_bp.route('/messages', methods=['GET'])
+@api.route('/messages', methods=['GET'])
 def get_message_history():
     """Get message history"""
-    client = NeonizeClient()
-    if client.connection_status != "connected":
+    if not whatsapp_client.connected:
         return jsonify({'success': False, 'message': 'Not connected to WhatsApp'}), 400
     
     # Convert message objects to dictionaries
     messages = []
-    for msg in client.message_history:
+    for msg in whatsapp_client.message_history:
         messages.append({
-            'id': msg.id,
-            'chat_id': msg.chat_id,
-            'sender': msg.sender.name if msg.sender else 'Unknown',
-            'sender_id': msg.sender.id if msg.sender else None,
-            'text': msg.text,
-            'timestamp': msg.timestamp.isoformat(),
-            'is_group': msg.is_group,
-            'group_name': msg.chat.name if msg.is_group else None,
-            'type': msg.type,
-            'is_outgoing': msg.is_outgoing
+            'id': msg.Info.ID,
+            'chat_id': msg.Info.MessageSource.Chat.id,
+            'sender': msg.Info.MessageSource.Sender.name if msg.Info.MessageSource.Sender else 'Unknown',
+            'sender_id': msg.Info.MessageSource.Sender.id if msg.Info.MessageSource.Sender else None,
+            'text': msg.Message.conversation if msg.Message.conversation else '',
+            'timestamp': msg.Info.Timestamp,
+            'is_group': msg.Info.MessageSource.IsGroup,
+            'group_name': msg.Info.MessageSource.Chat.name if msg.Info.MessageSource.IsGroup else None,
+            'type': msg.Info.Type,
+            'is_outgoing': msg.Info.MessageSource.IsFromMe
         })
     
     return jsonify({
@@ -106,33 +82,27 @@ def get_message_history():
         'messages': messages
     })
 
-@api_bp.route('/send', methods=['POST'])
-def send_message():
-    """Send a message to a recipient"""
-    client = NeonizeClient()
+@api.route('/send', methods=['POST'])
+async def send_message():
+    """Send a message"""
+    data = request.get_json()
+    if not data or 'to' not in data or 'message' not in data:
+        return jsonify({'error': 'Missing required fields'}), 400
     
-    if client.connection_status != "connected":
-        return jsonify({'success': False, 'message': 'Not connected to WhatsApp'}), 400
-    
-    data = request.json
-    recipient_id = data.get('recipient_id')
-    message_text = data.get('message')
-    
-    if not recipient_id or not message_text:
-        return jsonify({'success': False, 'message': 'Missing recipient ID or message text'}), 400
-    
-    success, message = client.send_message(recipient_id, message_text)
-    return jsonify({'success': success, 'message': message})
+    success, message = await whatsapp_client.send_message_async(data['to'], data['message'])
+    if success:
+        return jsonify({'status': 'sent'})
+    return jsonify({'error': message}), 500
 
 # Automation rule routes
-@api_bp.route('/automation/rules', methods=['GET'])
+@api.route('/automation/rules', methods=['GET'])
 def get_automation_rules():
     """Get all automation rules"""
     automation_manager = AutomationManager()
     rules = [rule.to_dict() for rule in automation_manager.get_rules()]
     return jsonify({'success': True, 'rules': rules})
 
-@api_bp.route('/automation/rules', methods=['POST'])
+@api.route('/automation/rules', methods=['POST'])
 def add_automation_rule():
     """Add a new automation rule"""
     automation_manager = AutomationManager()
@@ -159,7 +129,7 @@ def add_automation_rule():
     
     return jsonify({'success': True, 'rule_id': rule_id})
 
-@api_bp.route('/automation/rules/<rule_id>', methods=['PUT'])
+@api.route('/automation/rules/<rule_id>', methods=['PUT'])
 def update_automation_rule(rule_id):
     """Update an existing automation rule"""
     automation_manager = AutomationManager()
@@ -186,7 +156,7 @@ def update_automation_rule(rule_id):
     else:
         return jsonify({'success': False, 'message': 'Rule not found'}), 404
 
-@api_bp.route('/automation/rules/<rule_id>', methods=['DELETE'])
+@api.route('/automation/rules/<rule_id>', methods=['DELETE'])
 def delete_automation_rule(rule_id):
     """Delete an automation rule"""
     automation_manager = AutomationManager()
